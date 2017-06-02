@@ -13,6 +13,7 @@ import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 /**
  * Original class extends Activity to handle a picture preview, process the preview
@@ -32,13 +33,14 @@ public class HeartbeatMonitor {
     private static SurfaceHolder previewHolder = null;
     private static Camera camera = null;
     private static TextView beatStatus = null;
-    private static TextView bpmText = null;
+    public static TextView bpmText = null;
     private static TextView avgRed = null;
 
     private static WakeLock wakeLock = null;
 
     private static int averageIndex = 0;
     private static final int averageArraySize = 4;
+    private static int beatsAvg = 0;
     private static final int[] averageArray = new int[averageArraySize];
 
     public static enum TYPE {
@@ -49,6 +51,10 @@ public class HeartbeatMonitor {
 
     public static TYPE getCurrent() {
         return currentType;
+    }
+
+    public int getBeatsAvg(){
+        return beatsAvg;
     }
 
     private static int beatsIndex = 0;
@@ -76,11 +82,11 @@ public class HeartbeatMonitor {
         wakeLock = pm.newWakeLock(PowerManager.FULL_WAKE_LOCK, "DoNotDimScreen");
     }
 
-    public void onResume() {
+    public void onStart() {
         setUpCameraWithThread();
     }
 
-    public void onPause() {
+    public void onStop() {
         if (wakeLock.isHeld())
             wakeLock.release();
         if (camera != null) {
@@ -114,10 +120,21 @@ public class HeartbeatMonitor {
             } catch (IOException e) {
                 Log.i(TAG, "Could not setPreviewDisplay");
                 e.printStackTrace();
+                return;
+            } catch (NullPointerException n){
+                Log.i(TAG, "Could not start camera. NPE.");
+                main.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(main.getApplicationContext(), "Could not connect to camera.", Toast.LENGTH_LONG).show();
+                    }
+                });
+                return;
             }
             camera.setPreviewCallback(previewCallback);
             Camera.Parameters parameters = camera.getParameters();
             parameters.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
+            parameters.setWhiteBalance(Camera.Parameters.WHITE_BALANCE_AUTO);
             Camera.Size size = getSmallestPreviewSize(previewHolder.getSurfaceFrame().width(), previewHolder.getSurfaceFrame().height(), parameters);
             if (size != null) {
                 parameters.setPreviewSize(size.width, size.height);
@@ -186,7 +203,7 @@ public class HeartbeatMonitor {
                 if (currentType == TYPE.GREEN){
                     beatStatus.setText("LOW");
                 } else if (currentType == TYPE.RED){
-                    beatStatus.setText("BEAT");
+                    beatStatus.setText("HIGH");
                 }
             }
 
@@ -217,7 +234,7 @@ public class HeartbeatMonitor {
                         beatsArrayCnt++;
                     }
                 }
-                int beatsAvg = (beatsArrayAvg / beatsArrayCnt);
+                beatsAvg = (beatsArrayAvg / beatsArrayCnt);
                 bpmText.setText(String.valueOf(beatsAvg));
                 startTime = System.currentTimeMillis();
                 beats = 0;
